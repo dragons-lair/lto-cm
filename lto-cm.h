@@ -18,6 +18,7 @@ static void usage();
 
 int att_0803_write(int ,char* );
 int att_0803_read(int ,char* );
+int att_read(int , int, char* );
 
 
 

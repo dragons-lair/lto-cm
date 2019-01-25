@@ -14,6 +14,7 @@
 struct globalArgs_t {
 	int verbose;
 	const char* device_name;
+	int mem_id;
 	int readopt;
 	int writeopt;
 	char* msg;
@@ -28,6 +29,7 @@ static void usage()
           "lto-cm -f device -r/w [\"message\"] [-v]\n"
           " where:\n"
           "    -f device        is a sg device                        \n"
+          "    -m id            Memory ID to read from or write to    \n"
           "    -r/w             read OR write\n"
           "                     if \'w\': \"message to write\" (160 bytes)\n"
           "    -v               increase verbosity \n"
@@ -92,8 +94,16 @@ return 0;
 
 //-----------------------------READ 0803 FUNCTION---------------------------------
 int att_0803_read(int fd, char* data){
+return att_read(fd, 2051, data);
+}
+
+//-----------------------------GENERIC READ FUNCTION---------------------------------
+int att_read(int fd, int mem_id, char* data){
     int ok;
-    unsigned char rAttCmdBlk[READ_ATT_CMD_LEN] = {0x8C, 0x00, 0, 0, 0, 0, 0, 0, 0x08, 0x03, 0, 0, 159,0, 0, 0};
+	int lsb_id = mem_id & 0xFF;
+	mem_id = mem_id >> 8;
+	if(globalArgs.verbose)printf("SG_READ_ATT to msb_id=0x%x lsb_id=0x%x\n", mem_id, lsb_id);
+    unsigned char rAttCmdBlk[READ_ATT_CMD_LEN] = {0x8C, 0x00, 0, 0, 0, 0, 0, 0, mem_id, lsb_id, 0, 0, 159,0, 0, 0};
     unsigned char inBuff[READ_ATT_REPLY_LEN];
     unsigned char sense_buffer[32];
     sg_io_hdr_t io_hdr;
@@ -142,7 +152,6 @@ int att_0803_read(int fd, char* data){
 return 0;
 }
 
-
 //----------------------------- MAIN FUNCTION---------------------------------
 int main(int argc, char * argv[])
 {
@@ -155,13 +164,14 @@ int main(int argc, char * argv[])
 
    globalArgs.verbose=0;
    globalArgs.device_name=NULL;
+   globalArgs.mem_id=0;
    globalArgs.readopt=0;
    globalArgs.writeopt=0;
    globalArgs.msg=NULL;
 
     while (1) {
    
-        c = getopt(argc, argv, "f:rw:h?v");
+        c = getopt(argc, argv, "f:m:rw:h?v");
 
         if (c == -1)
             break;
@@ -170,6 +180,13 @@ int main(int argc, char * argv[])
         case 'f':
              if ((globalArgs.device_name=(char*)optarg)==NULL) {
  		fprintf(stderr, "ERROR : Specify a device\n");
+		usage();
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            break;
+        case 'm':
+             if ((globalArgs.mem_id=atoi((char *)optarg))==0) {
+ 		fprintf(stderr, "ERROR : Specify a memory ID\n");
 		usage();
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -266,9 +283,15 @@ int main(int argc, char * argv[])
 
 
 	if (globalArgs.readopt){
-		if(att_0803_read(sg_fd,messageout)==-1){
-			printf("ERROR : Read failed (try verbose opt)\n");
-			close(sg_fd);return -1;}
+		if (globalArgs.mem_id){
+			if(att_read(sg_fd, globalArgs.mem_id, messageout)==-1){
+				printf("ERROR : Read failed (try verbose opt)\n");
+				close(sg_fd);return -1;}
+		} else {
+			if(att_0803_read(sg_fd,messageout)==-1){
+				printf("ERROR : Read failed (try verbose opt)\n");
+				close(sg_fd);return -1;}
+		}
 		l=strlen (messageout);
 		for ( i = 0; i < l; ++i ){printf("%c", messageout[i]);}
 		printf("\n");
@@ -287,4 +310,3 @@ int main(int argc, char * argv[])
     close(sg_fd);
     return 0;
 }
-
