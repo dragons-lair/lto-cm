@@ -2,6 +2,8 @@ SHELL = /bin/sh
 ARCH = $(shell arch)
 DESTDIR ?= $RPM_BUILD_ROOT
 CC = gcc
+LIBFILES = lib64/sg_io_linux.o lib64/sg_lib.o lib64/sg_lib_data.o
+CFLAGS = -I./include/
 EXECS = install
 LARGE_FILE_FLAGS = -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 
@@ -32,10 +34,10 @@ install: lto-cm.o $(LIBFILES)
 	@cp ./lib64/sg_lib.o $(DESTDIR)/usr/lib64
 	@cp ./lib64/sg_io_linux.o $(DESTDIR)/usr/lib64
 	@cp ./lib64/sg_lib_data.o $(DESTDIR)/usr/lib64
-	
+
 uninstall:
 	@rm -rf $(DESTDIR)/usr/bin/lto-cm
-	
+
 reinstall: uninstall install
 
 clean:
