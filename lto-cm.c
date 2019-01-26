@@ -99,11 +99,30 @@ return att_read(fd, 2051, data);
 
 //-----------------------------GENERIC READ FUNCTION---------------------------------
 int att_read(int fd, int mem_id, char* data){
-    int ok;
+	int data_len = 0;
+    char ebuff[EBUFF_SZ];
+
+    switch (mem_id) {
+    case 2051: /* 0x0803 User Medium Text Label */
+		data_len = 160;
+        break;
+    case 2054: /* 0x0806 Barcode */
+		data_len = 32;
+        break;
+    default: /* won't bother decoding other categories */
+        snprintf(ebuff, EBUFF_SZ,
+				"SG_READ_ATT: Writing to memory ID 0x%04x not implemented", mem_id);
+		perror(ebuff);
+		close(fd);
+		return -1;
+    }
+
+	int ok;
 	int lsb_id = mem_id & 0xFF;
 	mem_id = mem_id >> 8;
-	if(globalArgs.verbose)printf("SG_READ_ATT to msb_id=0x%x lsb_id=0x%x\n", mem_id, lsb_id);
-    unsigned char rAttCmdBlk[READ_ATT_CMD_LEN] = {0x8C, 0x00, 0, 0, 0, 0, 0, 0, mem_id, lsb_id, 0, 0, 159,0, 0, 0};
+	if(globalArgs.verbose)printf("SG_READ_ATT to msb_id=0x%02x lsb_id=0x%02x\n", mem_id, lsb_id);
+	/* Making several assumptions about SCSI command formatting. Need LTO docs */
+    unsigned char rAttCmdBlk[READ_ATT_CMD_LEN] = {0x8C, 0x00, 0, 0, 0, 0, 0, 0, mem_id, lsb_id, 0, 0, data_len-1, 0, 0, 0};
     unsigned char inBuff[READ_ATT_REPLY_LEN];
     unsigned char sense_buffer[32];
     sg_io_hdr_t io_hdr;
