@@ -26,14 +26,14 @@ static void usage()
     fprintf(stderr, 
           "LTO-3/LTO-4 Medium Access Memory tool for User Medium Text Label\n"
           "Usage: \n"
-          "lto-cm -f device -r/w [\"message\"] [-v]\n"
+          "lto-cm [-h] [-v] -f device (-r|-w \"message\") [-m memory_id]\n"
           " where:\n"
-          "    -f device        is a sg device                        \n"
-          "    -m id            Memory ID to read from or write to    \n"
-          "    -r/w             read OR write\n"
-          "                     if \'w\': \"message to write\" (160 bytes)\n"
-          "    -v               increase verbosity \n"
-          "    -h/?             display usage\n"
+          "    -h/?             Display this usage message\n"
+          "    -v               Increase verbosity \n"
+          "    -f device        The SCSI-Generic (sg) device\n"
+          "    -r/w             Select read OR write (defaults to Memory ID 2051==0x0803),\n"
+          "                     If \'w\': supply a \"message\" to write (160 bytes)\n"
+          "    -m id            Memory ID (base-10 int) to read from or write to\n"
          );
 }
 
@@ -121,7 +121,7 @@ int att_read(int fd, int mem_id, char* data){
     io_hdr.timeout = 20000;     
 
     if (ioctl(fd, SG_IO, &io_hdr) < 0) {
-        if(globalArgs.verbose)perror("SG_READ_ATT_0803: Inquiry SG_IO ioctl error");
+        if(globalArgs.verbose)perror("SG_READ_ATT: Inquiry SG_IO ioctl error");
         close(fd);
         return -1;
     }
@@ -132,18 +132,18 @@ int att_read(int fd, int mem_id, char* data){
         ok = 1;
         break;
     case SG_LIB_CAT_RECOVERED:
-        if(globalArgs.verbose)printf("Recovered error on SG_READ_ATT_0803, continuing\n");
+        if(globalArgs.verbose)printf("Recovered error on SG_READ_ATT, continuing\n");
         ok = 1;
         break;
     default: /* won't bother decoding other categories */
 	printf("ERROR : Attribute 0803h doesn't exist yet, perform a write first\n");
-        if(globalArgs.verbose)sg_chk_n_print3("SG_READ_ATT_0803 command error", &io_hdr, 1);
+        if(globalArgs.verbose)sg_chk_n_print3("SG_READ_ATT command error", &io_hdr, 1);
         return -1;
     }
 
     if (ok) { /* output result if it is available */
 
-        if(globalArgs.verbose)printf("SG_READ_ATT_0803 duration=%u millisecs, resid=%d, msg_status=%d\n",
+        if(globalArgs.verbose)printf("SG_READ_ATT duration=%u millisecs, resid=%d, msg_status=%d\n",
                io_hdr.duration, io_hdr.resid, (int)io_hdr.msg_status);
 
 	strncpy( data, (char*)&inBuff[9],160 );
