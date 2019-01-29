@@ -39,24 +39,55 @@ static void usage()
 
 //------------------------------WRITE 0803 FUNCTION---------------------------------
 int att_0803_write(int fd, char* data){
+return att_write(fd, 2051, data);
+}
+
+//---------------------------GENERIC WRITE FUNCTION---------------------------------
+int att_write(int fd, int mem_id, char* data){
+    char ebuff[EBUFF_SZ];
+    int param_len = 0;
+    int param_type = 0;
+    switch (mem_id) {
+    case 2051: /* 0x0803 User Medium Text Label */
+		param_len = 160;
+		param_type = 2;
+//        unsigned char Wr_Att[USER_MEDIUM_TEXT_LABEL_SIZE] = {0,0,0,param_len+5,mem_id,lsb_id,2,0,param_len};
+	break;
+    case 2054: /* 0x0806 Barcode */
+		param_len = 32;
+		param_type = 1;
+//        unsigned char Wr_Att[BARCODE_SIZE] = {0,0,0,param_len+5,mem_id,lsb_id,2,0,param_len};
+	break;
+    default: /* won't bother decoding other categories */
+        snprintf(ebuff, EBUFF_SZ,
+                                "SG_READ_ATT: Writing to memory ID 0x%04x not implemented", mem_id);
+                perror(ebuff);
+                close(fd);
+                return -1;
+    }
+	int lsb_id = mem_id & 0xFF;
+        mem_id = mem_id >> 8;
+        if(globalArgs.verbose)printf("SG_READ_ATT to msb_id=0x%02x lsb_id=0x%02x\n", mem_id, lsb_id);
+        if(globalArgs.verbose)printf("param_len= %03d\n", param_len);
+    int WrBlk_len=param_len+9;
     int ok;
     sg_io_hdr_t io_hdr;
-    unsigned char WrAttCmdBlk [WRITE_ATT_CMD_LEN] = {0x8D, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0};
+    unsigned char WrAttCmdBlk [WRITE_ATT_CMD_LEN] = {0x8D, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, param_len+9, 0, 0};
     unsigned char sense_buffer[32];
-    unsigned char Wr_Att[169] = {0,0,0,165,0x08,0x03,2,0,160};
+/* Figure out how to get rid of Magic # 169 below by dynamically allocating memory for Array Wr_Att */
+    unsigned char Wr_Att[169] = {0,0,0,param_len+5,mem_id,lsb_id,param_type,0,param_len};
+ //   memset(Wr_Att, sizof(WrBlk_len), char);
 
-  //  if(att_0805_write(fd)==-1){ if(globalArgs.verbose)printf("SG_WRITE_ATT_0803: Error on SG_WRITE_ATT_0805\n");return -1;}
-
-    if(strlen (data) > 160 ){ printf("ERROR : String must not Exceed 160 Bytes\n"); return -1;}
+    if(strlen (data) > param_len ){ printf("ERROR : String must not Exceed %03d Bytes\n", param_len); return -1;}
+/* Figure out how to copy ASCII data from memory w/o using String Copy for Barcode Field... See Below */
+//    else{memcpy( (char*)&Wr_Att[9], data, sizeof(data) );}
     else{strcpy( (char*)&Wr_Att[9], data );}
-
-
     memset(&io_hdr, 0, sizeof(sg_io_hdr_t));
     io_hdr.interface_id = 'S';
     io_hdr.cmd_len = sizeof(WrAttCmdBlk);
     io_hdr.mx_sb_len = sizeof(sense_buffer);
     io_hdr.dxfer_direction = SG_DXFER_TO_DEV;
-    io_hdr.dxfer_len = 169;
+    io_hdr.dxfer_len = param_len+9;
     io_hdr.dxferp = Wr_Att;
     io_hdr.cmdp = WrAttCmdBlk;
     io_hdr.sbp = sense_buffer;
@@ -64,8 +95,9 @@ int att_0803_write(int fd, char* data){
 
 
     if (ioctl(fd, SG_IO, &io_hdr) < 0) {
-        if(globalArgs.verbose)perror("SG_WRITE_ATT_0803: Inquiry SG_IO ioctl error");
-        close(fd);
+        if(globalArgs.verbose)perror("SG_WRITE_ATT_XXXX: Inquiry SG_IO ioctl error");
+        /* Revisit above and replace XXXX with Variable for Parameter Attribute */
+	close(fd);
         return -1;
     }
 
@@ -75,7 +107,7 @@ int att_0803_write(int fd, char* data){
         ok = 1;
         break;
     case SG_LIB_CAT_RECOVERED:
-        if(globalArgs.verbose)printf("Recovered error on SG_WRITE_ATT_0803, continuing\n");
+        if(globalArgs.verbose)printf("Recovered error on SG_WRITE_ATT_0x%02x%02x, continuing\n", mem_id, lsb_id);
         ok = 1;
         break;
     default: /* won't bother decoding other categories */
@@ -84,8 +116,8 @@ int att_0803_write(int fd, char* data){
     }
 
     if (ok) { /* output result if it is available */
-        if(globalArgs.verbose)printf("SG_WRITE_ATT_0803 duration=%u millisecs, resid=%d, msg_status=%d\n",
-               io_hdr.duration, io_hdr.resid, (int)io_hdr.msg_status);
+        if(globalArgs.verbose)printf("SG_WRITE_ATT_0x%02x%02x duration=%u millisecs, resid=%d, msg_status=%d\n",
+               mem_id, lsb_id, io_hdr.duration, io_hdr.resid, (int)io_hdr.msg_status);
     }
 
 return 0;
@@ -99,19 +131,19 @@ return att_read(fd, 2051, data);
 
 //-----------------------------GENERIC READ FUNCTION---------------------------------
 int att_read(int fd, int mem_id, char* data){
-	int data_len = 0;
+	int param_len = 0;
     char ebuff[EBUFF_SZ];
 
     switch (mem_id) {
     case 2051: /* 0x0803 User Medium Text Label */
-		data_len = 160;
+		param_len = 160;
         break;
     case 2054: /* 0x0806 Barcode */
-		data_len = 32;
+		param_len = 32;
         break;
     default: /* won't bother decoding other categories */
         snprintf(ebuff, EBUFF_SZ,
-				"SG_READ_ATT: Writing to memory ID 0x%04x not implemented", mem_id);
+				"SG_READ_ATT: Reading from memory ID 0x%04x not implemented", mem_id);
 		perror(ebuff);
 		close(fd);
 		return -1;
@@ -121,8 +153,9 @@ int att_read(int fd, int mem_id, char* data){
 	int lsb_id = mem_id & 0xFF;
 	mem_id = mem_id >> 8;
 	if(globalArgs.verbose)printf("SG_READ_ATT to msb_id=0x%02x lsb_id=0x%02x\n", mem_id, lsb_id);
-	/* Making several assumptions about SCSI command formatting. Need LTO docs */
-    unsigned char rAttCmdBlk[READ_ATT_CMD_LEN] = {0x8C, 0x00, 0, 0, 0, 0, 0, 0, mem_id, lsb_id, 0, 0, data_len-1, 0, 0, 0};
+	if(globalArgs.verbose)printf("param_len= %03d\n", param_len);
+	/* The Below array "rAttCmdBlk" is formed in accordance with T-10 SPC-5 READ_ATTRIBUTE data structure */
+    unsigned char rAttCmdBlk[READ_ATT_CMD_LEN] = {0x8C, 0x00, 0, 0, 0, 0, 0, 0, mem_id, lsb_id, 0, 0, 0, param_len-1, 0, 0};
     unsigned char inBuff[READ_ATT_REPLY_LEN];
     unsigned char sense_buffer[32];
     sg_io_hdr_t io_hdr;
@@ -204,11 +237,11 @@ int main(int argc, char * argv[])
             }
             break;
         case 'm':
-             if ((globalArgs.mem_id=atoi((char *)optarg))==0) {
- 		fprintf(stderr, "ERROR : Specify a memory ID\n");
+ 		if ((globalArgs.mem_id=atoi((char *)optarg))==0) {
+		fprintf(stderr, "ERROR : Memory ID not Found... Try Again\n");
 		usage();
                 return SG_LIB_SYNTAX_ERROR;
-            }
+            	}	
             break;
         case 'r':
 	    globalArgs.readopt =1;
@@ -316,7 +349,7 @@ int main(int argc, char * argv[])
 		printf("\n");
 	}
 	else if(globalArgs.writeopt){
-		if(att_0803_write(sg_fd,globalArgs.msg)==-1){
+		if(att_write(sg_fd,globalArgs.mem_id,globalArgs.msg)==-1){
 			printf("ERROR : Write failed (try verbose opt)\n");
 			close(sg_fd);return -1;}
 	}
